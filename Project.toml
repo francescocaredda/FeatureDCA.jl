@@ -1,0 +1,4 @@
+name = "pcaDCA"
+uuid = "0be46616-a55f-4e6c-9ab4-0d441a6cea01"
+authors = ["francescocaredda <francecaredda6@gmail.com>"]
+version = "0.1.0"
