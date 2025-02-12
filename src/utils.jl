@@ -18,7 +18,7 @@ function sumexp(a::AbstractVector{<:Real})
     return exp(m) * sum(exp.(a .- m))
 end
 
-function likelihood(x,arvar) #for testing automatic differentiation
+function likelihood(x,arvar) #for testing automatic differentiation #for a single site
     @extract arvar: q L M d msa weights Y δ lambdaH lambdaJ lambdaG
     N = length(x)
     it_h = 1:q
@@ -210,35 +210,7 @@ function sample(arnet::ArNet, Y::Array{Float64,2})
     return res
 end
 
-function sample_(arnet::ArNet, Y::Array{Float64})
-    @extract arnet:H G J f1
-    msamples = size(Y, 2)
-    q = length(H[1])
-    N = length(H) 
-    res = zeros(Int, N, msamples) #mettere undef di nuovo
-    Threads.@threads for m in 1:msamples
-        e1 = H[1] .+ G[1]*Y[:,m]
-        softmax!(e1)
-        totH = zeros(Float64,q)
-        sample_z = zeros(Int, N)
-        sample_z[1] = wsample(1:q, softmax(e1))
-        for site in 2:2
-            Js = J[site-1]
-            Gs = G[site]
-            totH = H[site] .+ Gs*Y[:,m]
-            for j in 1:site-1
-                for a in 1:q
-                    totH[a] += Js[j,sample_z[j], a]
-                end
-            end
-            p = softmax(totH)
-            sample_z[site] = wsample(1:q, p)
-        
-        end
-        res[:, m] .= sample_z
-    end    
-    return res
-end
+
 
 compute_freq(Z::Matrix,W::Vector{Float64}) = compute_weighted_frequencies(Matrix{Int8}(Z), W)
 
@@ -249,35 +221,50 @@ Function that returns a tuple with the single and pairwise frequencies of the al
 """
 compute_freq(Z::Matrix) = compute_weighted_frequencies(Matrix{Int8}(Z), fill(1/size(Z,2), size(Z,2)))
 
-
-function sample2(arnet::ArNet, Y)
-    @extract arnet:H G J f1
-    msamples = size(Y, 2)
-    q = length(f1)
-    N = length(H) 
-    
-    res = Matrix{Int}(undef, N , msamples)
-    e1 = H[1] .+ G[1]*Y
-    softmax!(e1)
-    Threads.@threads for i in 1:msamples
-        totH = Vector{Float64}(undef, q)
-        sample_z = Vector{Int}(undef, N)
-        sample_z[1] = wsample(1:q, e1[:,i])
-        for site in 2:N
-            Js = J[site-1]
-            h = H[site]
-            g = G[site]*Y[:,i]
-            copy!(totH, h+g)
-
-            @turbo for i in 1:site-1
-                for a in 1:q
-                    totH[a] += Js[a, sample_z[i], i]
-                end
+function energy(seq::AbstractVector,y::AbstractVector,arnet::pcaDCA.ArNet)
+    @extract arnet:H G J
+    L = length(H)
+    q = length(H[1])
+    e = H[1] .+ G[1]*y #q dimensional vector
+    softmax!(e)
+    pl = -log(e[seq[1]])
+    for site in 2:L
+        Js = J[site-1]
+        Gs = G[site]
+        e .= H[site] .+ Gs*y
+        for j in 1:site-1
+            for a in 1:q
+                e[a] += Js[j,a, seq[j]]
             end
-            p = softmax(totH)
-            sample_z[site] = wsample(1:q, p)
         end
-        res[:, i] .= sample_z
+        softmax!(e)
+        pl -= log(e[seq[site]])
     end
-    return res
+    return pl
+end
+
+function energy(msa::AbstractArray, Y::AbstractMatrix, weigths::AbstractVector, net::pcaDCA.ArNet)
+    plvec = zeros(size(msa, 2))
+    @threads for m in axes(msa, 2)
+        plvec[m] = energy(msa[:, m], Y[:, m], net)
+    end
+    return plvec.*weigths
+end
+
+energy(msa, Y, net::pcaDCA.ArNet, var::pcaDCA.ArVar) = energy(msa, Y, var.weights, net)
+energy(msa, Y, net::pcaDCA.ArNet) = energy(msa, Y, fill(1/size(msa, 2), size(msa,2)), net)
+
+statistical_entropy(msa::AbstractArray, Y, net::pcaDCA.ArNet) = sum(energy(msa, Y, net))/size(msa,1)
+
+function one_cold(msa)
+    M,N,q = size(msa)
+    new_msa = zeros(Int,N,M)
+
+    for i in 1:N
+        for j in 1:M
+            index = argmax(msa[j,i,:])
+            new_msa[i,j] = Int.(index)
+        end
+    end
+    return new_msa
 end

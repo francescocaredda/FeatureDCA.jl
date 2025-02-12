@@ -101,19 +101,8 @@ function pl_and_grad!(grad,x,arvar)
     grad[it_G] .-= reshape((∂*Y'),d*q)
 
     #gradient in J
-
-
     g = zeros(T,s,q,q)
-    
-    # for a in 1:q
-    #     for k in 1:s
-    #         for b in 1:q
-    #             for m in 1:M
-    #                 g[k,a,b] += δ[m,k,b]*∂[a,m]
-    #             end
-    #         end
-    #     end
-    # end
+ 
 
     @tullio g[k,a,b] := δ[m,k,b] * ∂[a,m] avx=true threads=true
 
@@ -230,6 +219,7 @@ function minimize_arnet(alg::ArAlg, var::ArVar{T,Ti}) where {T,Ti}
     @extract var : q L M d msa Y δ f1
     @extract alg : epsconv maxit method
     θ = Vector{Float64}(undef, q*L + L*d*q + div(L*(L-1),2)*q*q)
+    vecps = Vector{Float64}(undef,L)
     ### OPTIMIZE FIRST SITE, ONLY G WITH H === F1
     x0_1 = zeros(Float64, d*q) #or zero or rand?????
     opt_1 = Opt(method, length(x0_1))
@@ -244,6 +234,7 @@ function minimize_arnet(alg::ArAlg, var::ArVar{T,Ti}) where {T,Ti}
     alg.verbose && println("status = $ret_1")
     θ[1:q] .= log.(f1)
     θ[q+1:q+d*q] .= minx_1
+    vecps[1] = minf_1
     
     ### OPTIMIZE REMAINING SITES
     @threads for site in 2:L
@@ -262,12 +253,12 @@ function minimize_arnet(alg::ArAlg, var::ArVar{T,Ti}) where {T,Ti}
         alg.verbose && @printf("site = %d\tpl = %.4f\ttime = %.4f\t", site, minf, elapstime)
         alg.verbose && println("status = $ret")
         θ[L1:L2] .= minx
-
+        vecps[site] = minf
     end
  
     H, G, J = unpack_params(θ,var)
     
-    return ArNet(H,G,J,f1)
+    return ArNet(H,G,J,f1),vecps
 end
 
 
@@ -294,39 +285,39 @@ function trainer(fasta::String;
 
     ArVar(Z,W,lambdaH,lambdaJ,lambdaG)
 
-    arnet = minimize_arnet(alg, arvar)
+    arnet,vecps = minimize_arnet(alg, arvar)
+    
+    return arnet, arvar, vecps
+
+end
+
+function trainer(Z::Matrix,W::Array{Float64,1};
+    Y::Symbol=:PCA,
+    lambdaH::Float64=0.01,
+    lambdaG::Float64=0.01,
+    lambdaJ::Float64=0.01,
+    epsconv::Float64=1e-5,
+    maxit::Int=1000,
+    verbose::Bool=true,
+    method=:LD_LBFGS)
+
+    alg = ArAlg(method, verbose, epsconv, maxit)
+
+    arvar = if Y == :PCA
+        ArVar(Z,W,lambdaH,lambdaJ,lambdaG)
+    elseif Y == :ZERO
+        ArVar(Z,W,zeros(2,length(W)),lambdaH,lambdaJ,lambdaG)
+    else 
+        error("Wrong value for Y, it can be either :PCA or :ZERO")
+    end
+
+    ArVar(Z,W,lambdaH,lambdaJ,lambdaG)
+
+    arnet,_ = minimize_arnet(alg, arvar)
     
     return arnet, arvar
 
 end
-
-# function trainer(Z::Matrix,W::Array{Float64,1};
-#     Y::Symbol=:PCA,
-#     lambdaH::Float64=0.01,
-#     lambdaG::Float64=0.01,
-#     lambdaJ::Float64=0.01,
-#     epsconv::Float64=1e-5,
-#     maxit::Int=1000,
-#     verbose::Bool=true,
-#     method=:LD_LBFGS)
-
-#     alg = ArAlg(method, verbose, epsconv, maxit)
-
-#     arvar = if Y == :PCA
-#         ArVar(Z,W,lambdaH,lambdaJ,lambdaG)
-#     elseif Y == :ZERO
-#         ArVar(Z,W,zeros(2,length(W)),lambdaH,lambdaJ,lambdaG)
-#     else 
-#         error("Wrong value for Y, it can be either :PCA or :ZERO")
-#     end
-
-#     ArVar(Z,W,lambdaH,lambdaJ,lambdaG)
-
-#     arnet,_ = minimize_arnet(alg, arvar)
-    
-#     return arnet, arvar
-
-# end
 
 #script to sample and check, to be implemented in a notebook for future references
 # Zs = sample(net,Y_)
