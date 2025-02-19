@@ -43,7 +43,7 @@ function likelihood_first(x,arvar) #for testing automatic differentiation
     
     G = reshape(x,q,d)
     
-    mat_ene = [f1[a] + view(G,a,:)'Y[:,m] for a = 1:q, m = 1:M]
+    mat_ene = [log(f1[a]) + view(G,a,:)'Y[:,m] for a = 1:q, m = 1:M]
     Z = logsumexp(mat_ene, dims=1)
     pl = [weights[m]*(mat_ene[msa[1,m],m] - Z[m]) for m in 1:M]
     
@@ -209,6 +209,35 @@ function sample(arnet::ArNet, Y::Array{Float64,2})
     end
     return res
 end
+function sample(arnet::ArNet, Y::Vector{Float64}, msamples)
+    @extract arnet:H G J f1
+    q = length(H[1])
+    N = length(H) 
+    res = Matrix{Int}(undef, N , msamples)
+    e1 = H[1] .+ G[1]*Y
+    softmax!(e1)
+    Threads.@threads for m in 1:msamples
+
+        totH = Vector{Float64}(undef, q)
+        sample_z = Vector{Int}(undef, N)
+        sample_z[1] = wsample(1:q, view(e1, :))
+
+        for site in 2:N
+            Js = J[site-1]
+            Gs = G[site]
+            totH = H[site] .+ Gs*Y
+            @turbo for j in 1:site-1
+                for a in 1:q
+                    totH[a] += Js[j,a, sample_z[j]]
+                end
+            end
+            p = softmax(totH)
+            sample_z[site] = wsample(1:q, p)
+        end
+        res[:, m] .= sample_z
+    end
+    return res
+end
 
 
 
@@ -256,15 +285,130 @@ energy(msa, Y, net::pcaDCA.ArNet) = energy(msa, Y, fill(1/size(msa, 2), size(msa
 
 statistical_entropy(msa::AbstractArray, Y, net::pcaDCA.ArNet) = sum(energy(msa, Y, net))/size(msa,1)
 
-function one_cold(msa)
-    M,N,q = size(msa)
-    new_msa = zeros(Int,N,M)
 
-    for i in 1:N
-        for j in 1:M
-            index = argmax(msa[j,i,:])
-            new_msa[i,j] = Int.(index)
-        end
-    end
-    return new_msa
+function encode_amino_acids(seq::Vector{Int})
+    # Define mapping from numbers (1-21) to amino acid letters
+    num_to_aa = Dict(
+        1 => 'A',  2 => 'C',  3 => 'D',  4 => 'E',  5 => 'F',
+        6 => 'G',  7 => 'H',  8 => 'I',  9 => 'K', 10 => 'L',
+       11 => 'M', 12 => 'N', 13 => 'P', 14 => 'Q', 15 => 'R',
+       16 => 'S', 17 => 'T', 18 => 'V', 19 => 'W', 20 => 'Y',
+       21 => '-'  # Assuming 21 represents a gap
+    )
+
+    # Convert sequence using the mapping
+    return join(num_to_aa[n] for n in seq)
 end
+
+
+function site_likelihood(site, net::pcaDCA.ArNet, var::pcaDCA.ArVar; reg = true)
+    
+    @extract var: q L M d msa weights Y lambdaH lambdaG lambdaJ f1
+    @extract net: H G J
+    if site == 1
+        G1 = G[1] 
+        
+        mat_ene = [log(f1[a]) + view(G1,a,:)'Y[:,m] for a = 1:q, m = 1:M]
+        Z = logsumexp(mat_ene, dims=1)
+        pl = [weights[m]*(mat_ene[msa[1,m],m] - Z[m]) for m in 1:M]
+        
+        res = if reg
+            -sum(pl) + lambdaG*sum(abs2,G1)
+        else
+            -sum(pl)
+        end
+        return res
+    else 
+        h = net.H[site]
+        G = net.G[site]
+        J = net.J[site-1]
+        mat_ene = [h[a] + view(G,a,:)'Y[:,m] + sum([J[k,a,msa[k,m]] for k = 1:site-1]) for a = 1:q, m = 1:M]
+        Z = logsumexp(mat_ene, dims=1)
+        pl = [weights[m]*(mat_ene[msa[site,m],m] - Z[m]) for m in 1:M]
+    
+        res = if reg
+            -sum(pl) + lambdaH*sum(abs2,h) + lambdaG*sum(abs2,G) + lambdaJ*sum(abs2,J)
+        else
+            -sum(pl)
+        end
+        return res
+    
+    end
+end
+
+function likelihood(net::pcaDCA.ArNet, var::pcaDCA.ArVar; reg = true) 
+    @extract var: L
+    vecps = Vector{Float64}(undef,L)
+    @threads for site in 1:L
+        vecps[site] = site_likelihood(site, net, var, reg = reg) 
+    end
+    return sum(vecps)
+end
+
+
+
+function site_likelihood(site, net::pcaDCA.ArNet, msa, Y, weights)
+    @extract net: H G J f1
+    L, M = size(msa)
+    q = length(H[1])
+
+    if site == 1
+        G1 = G[1]
+        mat_ene = Matrix{Float64}(undef, q, M)
+
+        @inbounds for a in 1:q
+            @views G1a = G1[a, :]
+            for m in 1:M
+                mat_ene[a, m] = log(f1[a]) + dot(G1a, Y[:, m])
+            end
+        end
+
+        Z = logsumexp(mat_ene, dims=1)
+        pl = zero(Float64)
+
+        @inbounds for m in 1:M
+            pl += weights[m] * (mat_ene[msa[1, m], m] - Z[m])
+        end
+
+        return -pl
+    else
+        h = H[site]
+        Gs = G[site]
+        Js = J[site-1]
+        mat_ene = Matrix{Float64}(undef, q, M)
+
+        @inbounds for a in 1:q
+            @views Gsa = Gs[a, :]
+            for m in 1:M
+                sum_J = zero(Float64)
+                for k in 1:(site-1)
+                    sum_J += Js[k, a, msa[k, m]]
+                end
+                mat_ene[a, m] = h[a] + dot(Gsa, Y[:, m]) + sum_J
+            end
+        end
+
+        Z = logsumexp(mat_ene, dims=1)
+        pl = zero(Float64)
+
+        @inbounds for m in 1:M
+            pl += weights[m] * (mat_ene[msa[site, m], m] - Z[m])
+        end
+
+        return -pl
+    end
+end
+
+function likelihood(net::pcaDCA.ArNet, msa, Y, weights)
+    L = length(net.H)
+    vecps = Vector{Float64}(undef, L)
+
+    @threads for site in 1:L
+        vecps[site] = site_likelihood(site, net, msa, Y, weights)
+    end
+
+    return sum(vecps)
+end
+
+likelihood(net::pcaDCA.ArNet, msa, Y) = likelihood(net::pcaDCA.ArNet, msa, Y, fill(1/size(msa, 2), size(msa, 2)))
+

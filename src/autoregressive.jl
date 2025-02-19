@@ -258,12 +258,13 @@ function minimize_arnet(alg::ArAlg, var::ArVar{T,Ti}) where {T,Ti}
  
     H, G, J = unpack_params(θ,var)
     
-    return ArNet(H,G,J,f1),vecps
+    return ArNet(H,G,J,f1), vecps
 end
 
 
 function trainer(fasta::String;
     Y::Symbol=:PCA,
+    d::Int=2,
     lambdaH::Float64=0.01,
     lambdaG::Float64=0.01,
     lambdaJ::Float64=0.01,
@@ -276,14 +277,14 @@ function trainer(fasta::String;
     W,Z,_,_,_ = read_fasta(fasta)
 
     arvar = if Y == :PCA
-        ArVar(Z,W,lambdaH,lambdaJ,lambdaG)
+        ArVar(Z,W,lambdaH,lambdaJ,lambdaG,d=d)
     elseif Y == :ZERO
-        ArVar(Z,W,zeros(2,length(W)),lambdaH,lambdaJ,lambdaG)
+        ArVar(Z,W,zeros(2,length(W)),lambdaH,lambdaJ,lambdaG,d=d)
     else 
         error("Wrong value for Y, it can be either :PCA or :ZERO")
     end
 
-    ArVar(Z,W,lambdaH,lambdaJ,lambdaG)
+    # ArVar(Z,W,lambdaH,lambdaJ,lambdaG)
 
     arnet,vecps = minimize_arnet(alg, arvar)
     
@@ -293,6 +294,7 @@ end
 
 function trainer(Z::Matrix,W::Array{Float64,1};
     Y::Symbol=:PCA,
+    d::Int=2,
     lambdaH::Float64=0.01,
     lambdaG::Float64=0.01,
     lambdaJ::Float64=0.01,
@@ -304,18 +306,16 @@ function trainer(Z::Matrix,W::Array{Float64,1};
     alg = ArAlg(method, verbose, epsconv, maxit)
 
     arvar = if Y == :PCA
-        ArVar(Z,W,lambdaH,lambdaJ,lambdaG)
+        ArVar(Z,W,lambdaH,lambdaJ,lambdaG,d=d)
     elseif Y == :ZERO
-        ArVar(Z,W,zeros(2,length(W)),lambdaH,lambdaJ,lambdaG)
+        ArVar(Z,W,zeros(2,length(W)),lambdaH,lambdaJ,lambdaG,d=d)
     else 
         error("Wrong value for Y, it can be either :PCA or :ZERO")
     end
 
-    ArVar(Z,W,lambdaH,lambdaJ,lambdaG)
-
-    arnet,_ = minimize_arnet(alg, arvar)
+    arnet,vecps = minimize_arnet(alg, arvar)
     
-    return arnet, arvar
+    return arnet, arvar, vecps 
 
 end
 
