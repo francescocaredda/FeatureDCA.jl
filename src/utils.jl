@@ -250,40 +250,40 @@ Function that returns a tuple with the single and pairwise frequencies of the al
 """
 compute_freq(Z::Matrix) = compute_weighted_frequencies(Matrix{Int8}(Z), fill(1/size(Z,2), size(Z,2)))
 
-function energy(seq::AbstractVector,y::AbstractVector,arnet::pcaDCA.ArNet)
-    @extract arnet:H G J
-    L = length(H)
-    q = length(H[1])
-    e = H[1] .+ G[1]*y #q dimensional vector
-    softmax!(e)
-    pl = -log(e[seq[1]])
-    for site in 2:L
-        Js = J[site-1]
-        Gs = G[site]
-        e .= H[site] .+ Gs*y
-        for j in 1:site-1
-            for a in 1:q
-                e[a] += Js[j,a, seq[j]]
-            end
-        end
-        softmax!(e)
-        pl -= log(e[seq[site]])
-    end
-    return pl
-end
+# function energy(seq::AbstractVector,y::AbstractVector,arnet::pcaDCA.ArNet)
+#     @extract arnet:H G J
+#     L = length(H)
+#     q = length(H[1])
+#     e = H[1] .+ G[1]*y #q dimensional vector
+#     softmax!(e)
+#     pl = -log(e[seq[1]])
+#     for site in 2:L
+#         Js = J[site-1]
+#         Gs = G[site]
+#         e .= H[site] .+ Gs*y
+#         for j in 1:site-1
+#             for a in 1:q
+#                 e[a] += Js[j,a, seq[j]]
+#             end
+#         end
+#         softmax!(e)
+#         pl -= log(e[seq[site]])
+#     end
+#     return pl
+# end
 
-function energy(msa::AbstractArray, Y::AbstractMatrix, weigths::AbstractVector, net::pcaDCA.ArNet)
-    plvec = zeros(size(msa, 2))
-    @threads for m in axes(msa, 2)
-        plvec[m] = energy(msa[:, m], Y[:, m], net)
-    end
-    return plvec.*weigths
-end
+# function energy(msa::AbstractArray, Y::AbstractMatrix, weigths::AbstractVector, net::pcaDCA.ArNet)
+#     plvec = zeros(size(msa, 2))
+#     @threads for m in axes(msa, 2)
+#         plvec[m] = energy(msa[:, m], Y[:, m], net)
+#     end
+#     return plvec.*weigths
+# end
 
-energy(msa, Y, net::pcaDCA.ArNet, var::pcaDCA.ArVar) = energy(msa, Y, var.weights, net)
-energy(msa, Y, net::pcaDCA.ArNet) = energy(msa, Y, fill(1/size(msa, 2), size(msa,2)), net)
+# energy(msa, Y, net::pcaDCA.ArNet, var::pcaDCA.ArVar) = energy(msa, Y, var.weights, net)
+# energy(msa, Y, net::pcaDCA.ArNet) = energy(msa, Y, fill(1/size(msa, 2), size(msa,2)), net)
 
-statistical_entropy(msa::AbstractArray, Y, net::pcaDCA.ArNet) = sum(energy(msa, Y, net))/size(msa,1)
+# statistical_entropy(msa::AbstractArray, Y, net::pcaDCA.ArNet) = sum(energy(msa, Y, net))/size(msa,1)
 
 
 function encode_amino_acids(seq::Vector{Int})
@@ -301,114 +301,327 @@ function encode_amino_acids(seq::Vector{Int})
 end
 
 
-function site_likelihood(site, net::pcaDCA.ArNet, var::pcaDCA.ArVar; reg = true)
-    
-    @extract var: q L M d msa weights Y lambdaH lambdaG lambdaJ f1
-    @extract net: H G J
-    if site == 1
-        G1 = G[1] 
-        
-        mat_ene = [log(f1[a]) + view(G1,a,:)'Y[:,m] for a = 1:q, m = 1:M]
-        Z = logsumexp(mat_ene, dims=1)
-        pl = [weights[m]*(mat_ene[msa[1,m],m] - Z[m]) for m in 1:M]
-        
-        res = if reg
-            -sum(pl) + lambdaG*sum(abs2,G1)
-        else
-            -sum(pl)
+
+function likelihood(net, seq::Vector, y::Vector)
+    @extract net:H G J
+    L = length(H)
+    q = length(H[1])
+    pl = zeros(L)
+    e = H[1] .+ G[1]*y #q dimensional vector
+    softmax!(e)
+    pl[1] = -log(e[seq[1]])
+    @threads for site in 2:L
+        e_ = zeros(q)
+        Js = J[site-1]
+        Gs = G[site]
+        e_ .= H[site] .+ Gs*y
+        for j in 1:site-1
+            for a in 1:q
+                e_[a] += Js[j,a, seq[j]]
+            end
         end
-        return res
-    else 
-        h = net.H[site]
-        G = net.G[site]
-        J = net.J[site-1]
-        mat_ene = [h[a] + view(G,a,:)'Y[:,m] + sum([J[k,a,msa[k,m]] for k = 1:site-1]) for a = 1:q, m = 1:M]
-        Z = logsumexp(mat_ene, dims=1)
-        pl = [weights[m]*(mat_ene[msa[site,m],m] - Z[m]) for m in 1:M]
-    
-        res = if reg
-            -sum(pl) + lambdaH*sum(abs2,h) + lambdaG*sum(abs2,G) + lambdaJ*sum(abs2,J)
-        else
-            -sum(pl)
-        end
-        return res
-    
+        softmax!(e_)
+        pl[site] = -log(e_[seq[site]])
     end
+    return sum(pl)
 end
 
-function likelihood(net::pcaDCA.ArNet, var::pcaDCA.ArVar; reg = true) 
-    @extract var: L
-    vecps = Vector{Float64}(undef,L)
-    @threads for site in 1:L
-        vecps[site] = site_likelihood(site, net, var, reg = reg) 
-    end
-    return sum(vecps)
-end
+# function likelihood(net, msa::Matrix, Y::Matrix)
+#     @extract net:H G J
+#     L,M = size(msa)
+#     q = length(H[1])
+#     pl = zeros(M)
+#     @threads for m in 1:M
+#         pl_scra = 0.0
+#         y = Y[:,m]
+#         seq = msa[:,m]
+#         e = H[1] .+ G[1]*y #q dimensional vector
+#         softmax!(e)
+#         pl_scra -= log(e[seq[1]])
+#         for site in 2:L
+#             Js = J[site-1]
+#             Gs = G[site]
+#             e .= H[site] .+ Gs*y
+#             for j in 1:site-1
+#                 for a in 1:q
+#                     e[a] += Js[j,a, seq[j]]
+#                 end
+#             end
+#             softmax!(e)
+#             pl_scra -= log(e[seq[site]])
+#         end
+#         pl[m] = pl_scra
+#     end
+#     return sum(pl)/M
+# end
 
 
-
-function site_likelihood(site, net::pcaDCA.ArNet, msa, Y, weights)
-    @extract net: H G J f1
+function likelihood(net, msa::Matrix, Y::Matrix)
+    @extract net:H G J
     L, M = size(msa)
     q = length(H[1])
+    pl = zeros(M)
 
-    if site == 1
-        G1 = G[1]
-        mat_ene = Matrix{Float64}(undef, q, M)
+    @threads for m in 1:M
+        pl_scra = 0.0
+        y = Y[:, m]
+        seq = msa[:, m]
 
-        @inbounds for a in 1:q
-            @views G1a = G1[a, :]
-            for m in 1:M
-                mat_ene[a, m] = log(f1[a]) + dot(G1a, Y[:, m])
-            end
-        end
+        # Thread-local buffer for `e` to avoid race conditions
+        e = H[1] .+ G[1] * y
+        
+        softmax!(e)
+        pl_scra -= log(e[seq[1]])
 
-        Z = logsumexp(mat_ene, dims=1)
-        pl = zero(Float64)
-
-        @inbounds for m in 1:M
-            pl += weights[m] * (mat_ene[msa[1, m], m] - Z[m])
-        end
-
-        return -pl
-    else
-        h = H[site]
-        Gs = G[site]
-        Js = J[site-1]
-        mat_ene = Matrix{Float64}(undef, q, M)
-
-        @inbounds for a in 1:q
-            @views Gsa = Gs[a, :]
-            for m in 1:M
-                sum_J = zero(Float64)
-                for k in 1:(site-1)
-                    sum_J += Js[k, a, msa[k, m]]
+        for site in 2:L
+            Js = J[site-1]
+            Gs = G[site]
+            
+            # Update `e` safely within the thread
+            e .= H[site] .+ Gs * y
+            
+            for j in 1:site-1
+                for a in 1:q
+                    e[a] += Js[j, a, seq[j]]
                 end
-                mat_ene[a, m] = h[a] + dot(Gsa, Y[:, m]) + sum_J
+            end
+
+            softmax!(e)
+            pl_scra -= log(e[seq[site]])
+        end
+
+        # Safe write to `pl[m]`
+        pl[m] = pl_scra
+    end
+
+    return sum(pl) / M
+end
+
+
+likelihood(net, msa::Matrix, Y::Vector) = likelihood(net, msa, hcat(fill(Y, size(msa,2))...))
+
+#
+
+function energy(net, seq::Vector, y::Vector)
+    @extract net:H G J
+    L = length(H)
+    ene = zeros(L)
+    ene[1] = -H[1][seq[1]] - G[1][seq[1],:]'y #q dimensional vector
+    @threads for site in 2:L
+
+        Js = J[site-1]
+        Gs = G[site]
+        ene[site] -= H[site][seq[site]] + Gs[seq[site],:]'y
+        for j in 1:site-1
+            ene[site] -= Js[j,seq[site], seq[j]]
+        end
+    end
+    return sum(ene)
+end
+
+# function energy(net, msa::Matrix, Y::Matrix)
+#     @extract net:H G J
+#     L,M = size(msa)
+#     q = length(H[1])
+#     ene = zeros(M)
+#     @threads for m in 1:M
+#         y = Y[:,m]
+#         seq = msa[:,m]
+#         ene[m] -= H[1][seq[1]] + G[1][seq[1],:]'y #q dimensional vector
+#         for site in 2:L
+#             Js = J[site-1]
+#             Gs = G[site]
+#             ene[m] -= H[site][seq[site]] + Gs[seq[site],:]'y
+#             for j in 1:site-1
+#                 ene[m] -= Js[j,seq[site], seq[j]]
+#             end
+#         end
+#     end
+#     return sum(ene)/M
+# end
+
+function energy(net, msa::Matrix, Y::Matrix)
+    @extract net:H G J
+    L, M = size(msa)
+    q = length(H[1])
+    ene = zeros(M)
+
+    @threads for m in 1:M
+        y = Y[:, m]
+        seq = msa[:, m]
+        ene_scra = 0.0  # Thread-local accumulation variable
+        
+        ene_scra -= H[1][seq[1]] + G[1][seq[1], :]' * y  # q-dimensional vector
+        
+        for site in 2:L
+            Js = J[site-1]
+            Gs = G[site]
+            ene_scra -= H[site][seq[site]] + Gs[seq[site], :]' * y
+            for j in 1:site-1
+                ene_scra -= Js[j, seq[site], seq[j]]
             end
         end
+        
+        ene[m] = ene_scra  # Safe write to unique index
+    end
 
-        Z = logsumexp(mat_ene, dims=1)
-        pl = zero(Float64)
+    return sum(ene) / M
+end
 
-        @inbounds for m in 1:M
-            pl += weights[m] * (mat_ene[msa[site, m], m] - Z[m])
+
+energy(net, msa::Matrix, Y::Vector) = energy(net, msa, hcat(fill(Y, size(msa,2))...))
+
+
+###
+
+function likelihood_noY(net, seq::Vector)
+    @extract net:H J
+    L = length(H)
+    q = length(H[1])
+    pl = zeros(L)
+    e = H[1] #q dimensional vector
+    softmax!(e)
+    pl[1] = -log(e[seq[1]])
+    @threads for site in 2:L
+        e_ = zeros(q)
+        Js = J[site-1]
+        e_ .= H[site]
+        for j in 1:site-1
+            for a in 1:q
+                e_[a] += Js[j,a, seq[j]]
+            end
         end
-
-        return -pl
+        softmax!(e_)
+        pl[site] = -log(e_[seq[site]])
     end
+    return sum(pl)
 end
 
-function likelihood(net::pcaDCA.ArNet, msa, Y, weights)
-    L = length(net.H)
-    vecps = Vector{Float64}(undef, L)
+# function likelihood_noY(net, msa::Matrix)
+#     @extract net:H J
+#     L,M = size(msa)
+#     q = length(H[1])
+#     pl = zeros(M)
+#     @threads for m in 1:M
+#         pl_scra = 0.0
+#         seq = msa[:,m]
+#         e = H[1] #q dimensional vector
+#         softmax!(e)
+#         pl_scra -= log(e[seq[1]])
+#         for site in 2:L
+#             e .= 0.0
+#             Js = J[site-1]
+#             e = H[site]
+#             for j in 1:site-1
+#                 for a in 1:q
+#                     e[a] += Js[j,a, seq[j]]
+#                 end
+#             end
+#             softmax!(e)
+#             pl_scra -= log(e[seq[site]])
+#         end
+#         pl[m] = pl_scra
+#     end
+#     return sum(pl)/M
+# end
 
-    @threads for site in 1:L
-        vecps[site] = site_likelihood(site, net, msa, Y, weights)
+
+function likelihood_noY(net, msa::Matrix)
+    @extract net:H J
+    L, M = size(msa)
+    q = length(H[1])
+    pl = zeros(M)
+    
+    @threads for m in 1:M
+        pl_scra = 0.0
+        seq = msa[:, m]
+        
+        # Allocate thread-local buffer to prevent race conditions
+        e = copy(H[1])
+        
+        softmax!(e)
+        pl_scra -= log(e[seq[1]])
+        
+        for site in 2:L
+            fill!(e, 0.0)  # Zero out instead of re-allocating
+            Js = J[site-1]
+            e .= H[site]
+            
+            for j in 1:site-1
+                for a in 1:q
+                    e[a] += Js[j, a, seq[j]]
+                end
+            end
+            
+            softmax!(e)
+            pl_scra -= log(e[seq[site]])
+        end
+        
+        pl[m] = pl_scra  # Safe write to unique index
     end
-
-    return sum(vecps)
+    
+    return sum(pl) / M
 end
 
-likelihood(net::pcaDCA.ArNet, msa, Y) = likelihood(net::pcaDCA.ArNet, msa, Y, fill(1/size(msa, 2), size(msa, 2)))
 
+function energy_noY(net, seq::Vector)
+    @extract net:H J
+    L = length(H)
+    ene = zeros(L)
+    ene[1] = -H[1][seq[1]] #q dimensional vector
+    @threads for site in 2:L
+        Js = J[site-1]
+        ene[site] -= H[site][seq[site]]
+        for j in 1:site-1
+            ene[site] -= Js[j,seq[site], seq[j]]
+        end
+    end
+    return sum(ene)
+end
+
+# function energy_noY(net, msa::Matrix)
+#     @extract net:H J
+#     L,M = size(msa)
+#     q = length(H[1])
+#     ene = zeros(M)
+#     @threads for m in 1:M
+#         seq = msa[:,m]
+#         ene[m] -= H[1][seq[1]] #q dimensional vector
+#         for site in 2:L
+#             Js = J[site-1]
+#             ene[m] -= H[site][seq[site]]
+#             for j in 1:site-1
+#                 ene[m] -= Js[j,seq[site], seq[j]]
+#             end
+#         end
+#     end
+#     return sum(ene)/M
+# end
+
+
+function energy_noY(net, msa::Matrix)
+    @extract net:H J
+    L, M = size(msa)
+    q = length(H[1])
+    ene = zeros(M)
+
+    @threads for m in 1:M
+        seq = msa[:, m]
+        ene_scra = 0.0  # Thread-local accumulation variable
+        
+        ene_scra -= H[1][seq[1]]
+        
+        for site in 2:L
+            Js = J[site-1]
+            ene_scra -= H[site][seq[site]]
+            
+            for j in 1:site-1
+                ene_scra -= Js[j, seq[site], seq[j]]
+            end
+        end
+        
+        ene[m] = ene_scra  # Safe write to unique index
+    end
+
+    return sum(ene) / M
+end
