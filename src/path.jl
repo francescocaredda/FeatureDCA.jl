@@ -483,24 +483,24 @@ function find_and_plot_path(Z, net, var, idx_start, idx_goal, grid_likelihood; d
     goal = pcaDCA.point_to_index(ZPC[1:2,idx_goal]..., min_x, max_x, min_y, max_y, n)
     
     # return start, goal
-    path = shortest_path(-grid_likelihood, start, goal)
+    path, likelihood = shortest_path(-grid_likelihood, start, goal)
 
     ps = pcaDCA.index_to_point.(path,n)
     x = map(x->x[1]+1, ps) 
     y = map(x->x[2]+1, ps)
     paths = pcaDCA.index_to_center(x, y, min_x, max_x, min_y, max_y, n)
+   
 
+    Zss, y_steps, likelihood_path = simple_path_search_no_plot(net, var, d = d, seq_start=idx_start, seq_arrival=idx_goal)
 
-    # Zss, y_steps, likelihood_path = simple_path_search_no_plot(net, var, d = d, seq_start=idx_start, seq_arrival=idx_goal)
-
-    # likelihood_path_model = zeros(length(paths[1]))
-    # y_steps_model = []
-    # for i in 1:length(paths[1])
-    #     Zs_ = sample(net, [paths[1][i],paths[2][i]], 500)
-    #     Zs_PC = predict(M, pcaDCA.one_hot(Zs_))
-    #     likelihood_path_model[i] = pcaDCA.likelihood(net, Zs_, Zs_PC)
-    #     push!(y_steps_model, mean(Zs_PC, dims=2)[1:2])
-    # end
+    likelihood_path_model = zeros(length(paths[1]))
+    y_steps_model = []
+    for i in 1:length(paths[1])
+        Zs_ = sample(net, [paths[1][i],paths[2][i]], 500)
+        Zs_PC = predict(M, pcaDCA.one_hot(Zs_))
+        likelihood_path_model[i] = pcaDCA.likelihood(net, Zs_, Zs_PC)
+        push!(y_steps_model, mean(Zs_PC, dims=2)[1:2])
+    end
 
     close("all")
 
@@ -510,10 +510,17 @@ function find_and_plot_path(Z, net, var, idx_start, idx_goal, grid_likelihood; d
     plot(ZPC[1,idx_start], ZPC[2,idx_start], "x", c="r", label="start")
     plot(ZPC[1,idx_goal], ZPC[2,idx_goal], "v", c="b", label="goal")
     plot(paths[1], paths[2], ".-", c="r")
-    # [plot(y[1], y[2], ".", c="k") for y in y_steps]
-    # [plot(y[1], y[2], ".", c="b") for y in y_steps_model]
+    [plot(y[1], y[2], ".", c="k") for y in y_steps]
+    [plot(y[1], y[2], ".", c="b") for y in y_steps_model]
 
-    # title("L_shortest: $(round(likelihood,digits=2)), L_model: $(round(sum(likelihood_path),digits=2))")
+    L1 = round(-likelihood,digits=2)
+    L2 = round(sum(likelihood_path),digits=2)
+    L3 = round(sum(likelihood_path_model),digits=2)
+    text(-5.0, 5.0, "L_shortest: $L1, L_shortest_sampled: $L3, L_model: $L2",;
+     fontsize=12, color="black",
+     bbox=Dict("facecolor" => "lightblue", "alpha" => 0.5, "edgecolor" => "black"))
+
+    # title("L_shortest: $(round(-likelihood,digits=2)), L_model: $(round(sum(likelihood_path),digits=2))")
     legend()
 
     gcf()
@@ -521,7 +528,7 @@ function find_and_plot_path(Z, net, var, idx_start, idx_goal, grid_likelihood; d
 end
 
 # Function to convert a matrix into a SimpleWeightedGraph
-function matrix_to_graph(matrix::Matrix{Float64})
+function matrix_to_graph(matrix)
     rows, cols = size(matrix)
     g = SimpleWeightedDiGraph(rows * cols)
     
@@ -546,7 +553,7 @@ function matrix_to_graph(matrix::Matrix{Float64})
 end
 
 # Function to find the shortest path in the matrix graph
-function shortest_path(matrix::Matrix{Float64}, start::Tuple{Int,Int}, goal::Tuple{Int,Int})
+function shortest_path(matrix, start::Tuple{Int,Int}, goal::Tuple{Int,Int})
     g = matrix_to_graph(matrix)
     rows, cols = size(matrix)
     index = (i, j) -> (i - 1) * cols + j
@@ -556,8 +563,15 @@ function shortest_path(matrix::Matrix{Float64}, start::Tuple{Int,Int}, goal::Tup
     
     dijkstra_state = dijkstra_shortest_paths(g, start_idx)
     path = enumerate_paths(dijkstra_state, goal_idx)
+
+    tot_weights = 0.0
+    for i in 1:(length(path) - 1)
+        u, v = path[i], path[i+1]
+        tot_weights += get_weight(g,u, v)
+    end
+    tot_weights
     
-    return path
+    return path, tot_weights
 end
 
 
@@ -566,3 +580,86 @@ function index_to_point(idx, n)
     y = div(idx - 1, n) + 1
     return x-1, y-1
 end
+
+
+function compute_likelihood_grid_ardca(net::ArDCA.ArNet, var::ArDCA.ArVar; n=30)
+    M = fit(PCA, pcaDCA.one_hot(var.Z), maxoutdim=2)
+    ZPC = predict(M, pcaDCA.one_hot(var.Z))
+    max_x = maximum(ZPC[1,:])
+    max_y = maximum(ZPC[2,:])
+    min_x = minimum(ZPC[1,:])
+    min_y = minimum(ZPC[2,:])
+
+
+    # m_x = [range(min_x,max_x,n);] .+ ([range(min_x,max_x,n);][2]-[range(min_x,max_x,n);][1])/2
+    # m_y = [range(min_y,max_y,n);] .+ ([range(min_y,max_y,n);][2]-[range(min_y,max_y,n);][1])/2;
+    m_x = LinRange(min_x, max_x, n)
+    m_y = LinRange(min_y, max_y, n)
+
+    idxs = [Vector{Any}() for _ in 1:n-1, _ in 1:n-1]
+    for i in 1:29
+        idx_ = findall(x->m_x[i]<=x<m_x[i+1],ZPC[1,:])
+        for j in 1:29
+            idx__ = findall(x->m_y[j]<=x<m_y[j+1],ZPC[2,idx_])
+            idxs[i,j] = idx_[idx__]
+        end
+    end
+
+    grid_likelihood = zeros(length(m_x)-1, length(m_y)-1)
+
+    for i in 1:n-1
+        for j in 1:n-1
+            if isempty(idxs[i,j])
+                grid_likelihood[i,j] = -Inf
+            else
+                grid_likelihood[i,j] = mean([ArDCA.loglikelihood(var.Z[:,s], net) for s in idxs[i,j]])
+            end
+        end
+    end
+    close("all")
+    pcolormesh(m_x, m_y, grid_likelihood, cmap="Reds", shading="flat")
+
+    return m_x, m_y, grid_likelihood
+
+end 
+
+function compute_likelihood_grid_pcadca(net::pcaDCA.ArNet, var::pcaDCA.ArVar; n=30)
+    M = fit(PCA, pcaDCA.one_hot(var.msa), maxoutdim=2)
+    ZPC = predict(M, pcaDCA.one_hot(var.msa))
+    max_x = maximum(ZPC[1,:])
+    max_y = maximum(ZPC[2,:])
+    min_x = minimum(ZPC[1,:])
+    min_y = minimum(ZPC[2,:])
+
+
+    # m_x = [range(min_x,max_x,n);] .+ ([range(min_x,max_x,n);][2]-[range(min_x,max_x,n);][1])/2
+    # m_y = [range(min_y,max_y,n);] .+ ([range(min_y,max_y,n);][2]-[range(min_y,max_y,n);][1])/2;
+    m_x = LinRange(min_x, max_x, n)
+    m_y = LinRange(min_y, max_y, n)
+
+    idxs = [Vector{Any}() for _ in 1:n-1, _ in 1:n-1]
+    for i in 1:29
+        idx_ = findall(x->m_x[i]<=x<m_x[i+1],ZPC[1,:])
+        for j in 1:29
+            idx__ = findall(x->m_y[j]<=x<m_y[j+1],ZPC[2,idx_])
+            idxs[i,j] = idx_[idx__]
+        end
+    end
+
+    grid_likelihood = zeros(length(m_x)-1, length(m_y)-1)
+
+    for i in 1:n-1
+        for j in 1:n-1
+            if isempty(idxs[i,j])
+                grid_likelihood[i,j] = -Inf
+            else
+                grid_likelihood[i,j] = mean([likelihood(net, var.msa[:,s], var.Y[:,s]) for s in idxs[i,j]])
+            end
+        end
+    end
+    close("all")
+    pcolormesh(m_x, m_y, grid_likelihood, cmap="Reds", shading="flat")
+
+    return m_x, m_y, grid_likelihood
+
+end 
