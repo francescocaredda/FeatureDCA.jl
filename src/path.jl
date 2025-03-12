@@ -400,37 +400,6 @@ end
 
 
 
-function compute_likelihood_grid(net, var; n=30)
-    M = fit(PCA, pcaDCA.one_hot(var.msa), maxoutdim=var.d)
-    ZPC = predict(M, pcaDCA.one_hot(var.msa))
-    max_x = maximum(ZPC[1,:])
-    max_y = maximum(ZPC[2,:])
-    min_x = minimum(ZPC[1,:])
-    min_y = minimum(ZPC[2,:])
-
-
-    # m_x = [range(min_x,max_x,n);] .+ ([range(min_x,max_x,n);][2]-[range(min_x,max_x,n);][1])/2
-    # m_y = [range(min_y,max_y,n);] .+ ([range(min_y,max_y,n);][2]-[range(min_y,max_y,n);][1])/2;
-    m_x = LinRange(min_x, max_x, n)
-    m_y = LinRange(min_y, max_y, n)
-
-    grid_likelihood = zeros(length(m_x)-1, length(m_y)-1)
-    for i in 1:n-1
-        for j in 1:n-1
-            Y = [m_x[i],m_y[j]]
-            Zs_ = sample(net, Y, 500)
-            Zs_PC = predict(M, pcaDCA.one_hot(Zs_))
-            # grid_likelihood[end-i+1,j] = pcaDCA.likelihood(net, Zs_, Y)
-            grid_likelihood[i,j] = pcaDCA.likelihood(net, Zs_, Zs_PC)
-        end
-    end
-    close("all")
-    pcolormesh(m_x, m_y, grid_likelihood, cmap="Reds", shading="flat")
-
-    return m_x, m_y, grid_likelihood
-
-end
-
 function point_to_index(x, y, xmin, xmax, ymin, ymax, N)
     # Ensure inputs are arrays for uniform processing
     x_arr = isa(x, Number) ? [x] : x
@@ -516,13 +485,13 @@ function find_and_plot_path(Z, net, var, idx_start, idx_goal, grid_likelihood; d
     L1 = round(-likelihood,digits=2)
     L2 = round(sum(likelihood_path),digits=2)
     L3 = round(sum(likelihood_path_model),digits=2)
-    text(-5.0, 5.0, "L_shortest: $L1, L_shortest_sampled: $L3, L_model: $L2",;
-     fontsize=12, color="black",
-     bbox=Dict("facecolor" => "lightblue", "alpha" => 0.5, "edgecolor" => "black"))
+    # text(-5.0, 5.0, "L_shortest: $L1, L_shortest_sampled: $L3, L_model: $L2",;
+    #  fontsize=12, color="black",
+    #  bbox=Dict("facecolor" => "lightblue", "alpha" => 0.5, "edgecolor" => "black"))
 
     # title("L_shortest: $(round(-likelihood,digits=2)), L_model: $(round(sum(likelihood_path),digits=2))")
     legend()
-
+    title("L_shortest: $L1, L_shortest_sampled: $L3, L_model: $L2")
     gcf()
 
 end
@@ -590,21 +559,17 @@ function compute_likelihood_grid_ardca(net::ArDCA.ArNet, var::ArDCA.ArVar; n=30)
     min_x = minimum(ZPC[1,:])
     min_y = minimum(ZPC[2,:])
 
-
-    # m_x = [range(min_x,max_x,n);] .+ ([range(min_x,max_x,n);][2]-[range(min_x,max_x,n);][1])/2
-    # m_y = [range(min_y,max_y,n);] .+ ([range(min_y,max_y,n);][2]-[range(min_y,max_y,n);][1])/2;
     m_x = LinRange(min_x, max_x, n)
     m_y = LinRange(min_y, max_y, n)
 
     idxs = [Vector{Any}() for _ in 1:n-1, _ in 1:n-1]
-    for i in 1:29
+    for i in 1:n-1
         idx_ = findall(x->m_x[i]<=x<m_x[i+1],ZPC[1,:])
-        for j in 1:29
+        for j in 1:n-1
             idx__ = findall(x->m_y[j]<=x<m_y[j+1],ZPC[2,idx_])
             idxs[i,j] = idx_[idx__]
         end
     end
-
     grid_likelihood = zeros(length(m_x)-1, length(m_y)-1)
 
     for i in 1:n-1
@@ -617,12 +582,49 @@ function compute_likelihood_grid_ardca(net::ArDCA.ArNet, var::ArDCA.ArVar; n=30)
         end
     end
     close("all")
+    grid_likelihood = permutedims(grid_likelihood)
     pcolormesh(m_x, m_y, grid_likelihood, cmap="Reds", shading="flat")
 
     return m_x, m_y, grid_likelihood
 
 end 
 
+#for each tile this computes the likelihood of the sequences that have been generated inside the tile, 
+#regardless of where they actually land in in the grid
+function compute_likelihood_grid(net, var; n=30)
+    M = fit(PCA, pcaDCA.one_hot(var.msa), maxoutdim=var.d)
+    ZPC = predict(M, pcaDCA.one_hot(var.msa))
+    max_x = maximum(ZPC[1,:])
+    max_y = maximum(ZPC[2,:])
+    min_x = minimum(ZPC[1,:])
+    min_y = minimum(ZPC[2,:])
+
+
+    # m_x = [range(min_x,max_x,n);] .+ ([range(min_x,max_x,n);][2]-[range(min_x,max_x,n);][1])/2
+    # m_y = [range(min_y,max_y,n);] .+ ([range(min_y,max_y,n);][2]-[range(min_y,max_y,n);][1])/2;
+    m_x = LinRange(min_x, max_x, n)
+    m_y = LinRange(min_y, max_y, n)
+
+    grid_likelihood = zeros(length(m_x)-1, length(m_y)-1)
+    for i in 1:n-1
+        for j in 1:n-1
+            Y = [m_x[i],m_y[j]]
+            Zs_ = sample(net, Y, 500)
+            Zs_PC = predict(M, pcaDCA.one_hot(Zs_))
+            # grid_likelihood[end-i+1,j] = pcaDCA.likelihood(net, Zs_, Y)
+            grid_likelihood[i,j] = pcaDCA.likelihood(net, Zs_, Zs_PC)
+        end
+    end
+    close("all")
+    grid_likelihood = permutedims(grid_likelihood)
+    pcolormesh(m_x, m_y, grid_likelihood, cmap="Reds", shading="flat")
+
+    return m_x, m_y, grid_likelihood
+
+end
+
+#this function computes the likelihood of each tile in the grid, after having 
+#located each sequence inside the tiles. so the likelihood of each tile depends only on the natural sequences that fall inside of it
 function compute_likelihood_grid_pcadca(net::pcaDCA.ArNet, var::pcaDCA.ArVar; n=30)
     M = fit(PCA, pcaDCA.one_hot(var.msa), maxoutdim=2)
     ZPC = predict(M, pcaDCA.one_hot(var.msa))
@@ -638,9 +640,9 @@ function compute_likelihood_grid_pcadca(net::pcaDCA.ArNet, var::pcaDCA.ArVar; n=
     m_y = LinRange(min_y, max_y, n)
 
     idxs = [Vector{Any}() for _ in 1:n-1, _ in 1:n-1]
-    for i in 1:29
+    for i in 1:n-1
         idx_ = findall(x->m_x[i]<=x<m_x[i+1],ZPC[1,:])
-        for j in 1:29
+        for j in 1:n-1
             idx__ = findall(x->m_y[j]<=x<m_y[j+1],ZPC[2,idx_])
             idxs[i,j] = idx_[idx__]
         end
@@ -658,8 +660,105 @@ function compute_likelihood_grid_pcadca(net::pcaDCA.ArNet, var::pcaDCA.ArVar; n=
         end
     end
     close("all")
+    grid_likelihood = permutedims(grid_likelihood)
     pcolormesh(m_x, m_y, grid_likelihood, cmap="Reds", shading="flat")
 
     return m_x, m_y, grid_likelihood
 
 end 
+
+
+#this one does not work at all
+function compute_likelihood_grid_msa(net::pcaDCA.ArNet, var::pcaDCA.ArVar; n=30)
+    ZPC = get_pca_components(var.msa, d=var.d)
+    max_x = maximum(ZPC[1,:])
+    max_y = maximum(ZPC[2,:])
+    min_x = minimum(ZPC[1,:])
+    min_y = minimum(ZPC[2,:])
+
+
+    # m_x = [range(min_x,max_x,n);] .+ ([range(min_x,max_x,n);][2]-[range(min_x,max_x,n);][1])/2
+    # m_y = [range(min_y,max_y,n);] .+ ([range(min_y,max_y,n);][2]-[range(min_y,max_y,n);][1])/2;
+    m_x = LinRange(min_x, max_x, n)
+    m_y = LinRange(min_y, max_y, n)
+    
+    grid_likelihood = zeros(length(m_x)-1, length(m_y)-1)
+
+    for i in 1:n-1
+        for j in 1:n-1
+            grid_likelihood[i,j] = likelihood(net, var.msa, [m_x[i],m_y[j]])
+        end
+    end
+    close("all")
+    grid_likelihood = permutedims(grid_likelihood)
+    pcolormesh(m_x, m_y, grid_likelihood, cmap="Reds", shading="flat")
+
+    return m_x, m_y, grid_likelihood
+
+end 
+
+
+#this one generates a set of sequences in each tile of the grid and then 
+#it checks where each sequences has fallen into and for the tiles computes the likelihood
+#given the generated sequences inside the tile
+function compute_likelihood_grid_in_position(net::pcaDCA.ArNet, var::pcaDCA.ArVar; n=30)
+    M = fit(PCA, pcaDCA.one_hot(var.msa), maxoutdim=2)
+    ZPC = predict(M, pcaDCA.one_hot(var.msa))
+    max_x = maximum(ZPC[1,:])
+    max_y = maximum(ZPC[2,:])
+    min_x = minimum(ZPC[1,:])
+    min_y = minimum(ZPC[2,:])
+
+
+    # m_x = [range(min_x,max_x,n);] .+ ([range(min_x,max_x,n);][2]-[range(min_x,max_x,n);][1])/2
+    # m_y = [range(min_y,max_y,n);] .+ ([range(min_y,max_y,n);][2]-[range(min_y,max_y,n);][1])/2;
+    m_x = LinRange(min_x, max_x, n)
+    m_y = LinRange(min_y, max_y, n)
+
+
+    Zs = []
+    ZsPC = []
+    grid_likelihood = zeros(length(m_x)-1, length(m_y)-1)
+    for i in 1:n-1
+        for j in 1:n-1
+            Y = [m_x[i],m_y[j]]
+            Zs_ = sample(net, Y, 100)
+            Zs_PC = predict(M, pcaDCA.one_hot(Zs_))
+            push!(Zs, Zs_)
+            push!(ZsPC, Zs_PC)
+            # grid_likelihood[end-i+1,j] = pcaDCA.likelihood(net, Zs_, Y)
+        end
+    end
+
+    Zs = hcat(Zs...)
+    ZsPC = hcat(ZsPC...)
+
+    idxs = [Vector{Any}() for _ in 1:n-1, _ in 1:n-1]
+    for i in 1:n-1
+        idx_ = findall(x->m_x[i]<=x<m_x[i+1],ZsPC[1,:])
+        for j in 1:n-1
+            idx__ = findall(x->m_y[j]<=x<m_y[j+1],ZsPC[2,idx_])
+            idxs[i,j] = idx_[idx__]
+        end
+    end
+
+
+    grid_likelihood = zeros(length(m_x)-1, length(m_y)-1)
+
+
+    for i in 1:n-1
+        for j in 1:n-1
+            if isempty(idxs[i,j])
+                grid_likelihood[i,j] = -Inf
+            else
+                grid_likelihood[i,j] = mean([likelihood(net, Zs[:,s], ZsPC[:,s]) for s in idxs[i,j]])
+            end
+        end
+    end
+    close("all")
+    grid_likelihood = permutedims(grid_likelihood)
+    pcolormesh(m_x, m_y, grid_likelihood, cmap="Reds", shading="flat")
+
+    return m_x, m_y, grid_likelihood
+
+end
