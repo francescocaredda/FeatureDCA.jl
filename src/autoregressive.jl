@@ -271,10 +271,11 @@ function trainer(fasta::String;
     epsconv::Float64=1e-5,
     maxit::Int=1000,
     verbose::Bool=true,
+    remove_dups::Bool=true,
     method=:LD_LBFGS)
 
     alg = ArAlg(method, verbose, epsconv, maxit)
-    W,Z,_,_,_ = read_fasta(fasta)
+    W,Z,_,_,_ = read_fasta(fasta, remove_dups=remove_dups)
 
     arvar = if Y == :PCA
         ArVar(Z,W,lambdaH,lambdaJ,lambdaG,d=d)
