@@ -78,12 +78,16 @@ function read_annotated_fasta(filename::AbstractString; theta::Any=:auto, remove
     annotations = [seqs[i][1:end-1] for i in axes(Z,2)]
     if remove_dups
         Z, z = remove_duplicate_sequences(Z)
+        N, M = size(Z)
+        q = round(Int, maximum(Z))
+        W, Meff = compute_weights(Z, theta)
+        return W, Z, N, M, q, annotations[z]
+    else
+        N, M = size(Z)
+        q = round(Int, maximum(Z))
+        W, Meff = compute_weights(Z, theta)
+        return W, Z, N, M, q, annotations
     end
-    N, M = size(Z)
-    q = round(Int, maximum(Z))
-    W, Meff = compute_weights(Z, theta)
-    return W, Z, N, M, q, annotations[z]
-   
 
 end
 
@@ -301,10 +305,79 @@ function encode_amino_acids(seq::Vector{Int})
 end
 
 
-humming(s1,s2) = mean(s1 .!= s2)
+hamming(s1,s2) = mean(s1 .!= s2)
 
-function regularization(net, var)
+function regularization(net::pcaDCA.ArNet, var)
     @extract net: H G J f1
     @extract var: lambdaH lambdaG lambdaJ
     return lambdaH*sum(abs2,vcat(H[2:end]...)) + lambdaG*sum(abs2,vcat(G[:]...)[:]) + lambdaJ*sum(abs2,vcat(J[:]...)[:])
+end
+
+
+const AA_MAP = Dict(
+                1 => 'A',  2 => 'C',  3 => 'D',  4 => 'E',  5 => 'F',
+                6 => 'G',  7 => 'H',  8 => 'I',  9 => 'K', 10 => 'L',
+                11 => 'M', 12 => 'N', 13 => 'P', 14 => 'Q', 15 => 'R',
+                16 => 'S', 17 => 'T', 18 => 'V', 19 => 'W', 20 => 'Y',
+                21 => '-')
+
+function convert_to_amino_acids(sequence::Vector{Int})
+    return join([AA_MAP[n] for n in sequence])
+end
+                
+function convert_to_amino_acids_ignore_gaps(sequence::Vector{Int})
+    return join([AA_MAP[n] for n in sequence if n != 21])
+end
+
+function create_fasta(Z, filename; gaps = false, annotations=nothing)
+    
+    f = gaps ? convert_to_amino_acids : convert_to_amino_acids_ignore_gaps
+
+    annotations = annotations === nothing ? ["seq$(i)" for i in axes(Z,2)] : [annotations[i][1] for i in axes(Z,2)]
+    sequences = [(annotations[i], f(Z[:,i])) for i in axes(Z,2)]
+
+    writefasta(filename, sequences)
+    println("Fasta file $filename created with $(length(sequences)) sequences.")
+
+end
+
+function get_fasta_ids(file_path::String)
+    ids = String[]
+    open(file_path, "r") do file
+        for line in eachline(file)
+            if startswith(line, ">")
+                # Remove the ">" character and any surrounding whitespace.
+                push!(ids, strip(line[2:end]))
+            end
+        end
+    end
+    return ids
+end
+
+function read_rmsd_matrix(file_path::String)
+    # Read the file into an array of lines
+    lines = readlines(file_path)
+    
+    # Ensure the file is not empty
+    if isempty(lines)
+        error("The input file is empty.")
+    end
+    
+    # Parse the header row (skip the first element, which is an empty label)
+    header = split(lines[1], ",")[2:end]
+    
+    # Initialize an empty matrix to store RMSD values
+    num_queries = length(lines) - 1
+    num_targets = length(header)
+    
+    # Preallocate the matrix
+    rmsd_matrix = zeros(num_queries, num_targets)
+    
+    # Read each subsequent line
+    for (i, line) in enumerate(lines[2:end])
+        values = split(line, ",")
+        rmsd_matrix[i, :] = parse.(Float64, values[2:end])  # Convert values to Float64
+    end
+    
+    return rmsd_matrix
 end
