@@ -275,7 +275,7 @@ function trainer(fasta::String;
     method=:LD_LBFGS)
 
     alg = ArAlg(method, verbose, epsconv, maxit)
-    W,Z,_,_,_ = read_fasta(fasta, remove_dups=remove_dups)
+    W,Z,_,_,_,an = read_annotated_fasta(fasta, remove_dups=remove_dups)
 
     arvar = if Y == :PCA
         ArVar(Z,W,lambdaH,lambdaJ,lambdaG,d=d)
@@ -289,7 +289,7 @@ function trainer(fasta::String;
 
     arnet,vecps = minimize_arnet(alg, arvar)
     
-    return arnet, arvar, vecps
+    return arnet, arvar, vecps, an
 
 end
 
