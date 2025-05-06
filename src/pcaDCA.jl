@@ -11,7 +11,6 @@ using ExtractMacro
 using Statistics, LinearAlgebra, Tullio
 using NLopt
 using MultivariateStats
-using Graphs, SimpleWeightedGraphs
 
 export ArVar, ArNet, trainer, sample
 
@@ -21,6 +20,6 @@ include("utils.jl")
 include("autoregressive.jl")
 include("dca.jl")
 include("test.jl")
-include("path.jl")
+#include("path.jl")
 
 end 
