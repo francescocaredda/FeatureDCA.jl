@@ -72,8 +72,8 @@ function read_fasta(filename::AbstractString; max_gap_fraction::Real=0.9, theta:
     return W, Z, N, M, q
 end
 
-function read_annotated_fasta(filename::AbstractString; theta::Any=:auto, remove_dups::Bool=true)
-    Z = read_fasta_alignment(filename, 0.9)
+function read_annotated_fasta(filename::AbstractString; theta::Any=:auto, remove_dups::Bool=true, max_gap_fraction::Real=1.0)
+    Z = read_fasta_alignment(filename, max_gap_fraction)
     seqs = FastaIO.readfasta(filename)
     annotations = [seqs[i][1:end-1] for i in axes(Z,2)]
     if remove_dups
