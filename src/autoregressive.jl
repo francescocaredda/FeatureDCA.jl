@@ -263,7 +263,7 @@ end
 
 
 function trainer(fasta::String;
-    Y::Symbol=:PCA,
+    Y::Union{Symbol, Array{Float64, 2}}=:PCA,
     d::Int=2,
     lambdaH::Float64=0.01,
     lambdaG::Float64=0.01,
@@ -281,7 +281,9 @@ function trainer(fasta::String;
         ArVar(Z,W,lambdaH,lambdaJ,lambdaG,d=d)
     elseif Y == :ZERO
         ArVar(Z,W,zeros(2,length(W)),lambdaH,lambdaJ,lambdaG,d=d)
-    else 
+    elseif Y isa Array{Float64, 2}
+        ArVar(Z,W,Y,lambdaH,lambdaJ,lambdaG,d=size(Y,1))
+    else
         error("Wrong value for Y, it can be either :PCA or :ZERO")
     end
 
@@ -294,7 +296,7 @@ function trainer(fasta::String;
 end
 
 function trainer(Z::Matrix,W::Array{Float64,1};
-    Y::Symbol=:PCA,
+    Y::Union{Symbol, Array{Float64,2}}=:PCA,
     d::Int=2,
     lambdaH::Float64=0.01,
     lambdaG::Float64=0.01,
@@ -310,7 +312,9 @@ function trainer(Z::Matrix,W::Array{Float64,1};
         ArVar(Z,W,lambdaH,lambdaJ,lambdaG,d=d)
     elseif Y == :ZERO
         ArVar(Z,W,zeros(2,length(W)),lambdaH,lambdaJ,lambdaG,d=d)
-    else 
+    elseif Y isa Array{Float64, 2}
+        ArVar(Z,W,Y,lambdaH,lambdaJ,lambdaG,d=size(Y,1))
+    else
         error("Wrong value for Y, it can be either :PCA or :ZERO")
     end
 
