@@ -381,3 +381,20 @@ function read_rmsd_matrix(file_path::String)
     
     return rmsd_matrix
 end
+
+using Distances
+using OptimalTransport
+function pca2_wasserstein(Y1::AbstractMatrix, Y2::AbstractMatrix; e=1e-1, maxiter=2000, atol=1e-9, rtol=1e-9)
+           
+    M1 = size(Y1, 2)
+    M2 = size(Y2, 2)
+
+    μ = fill(1/M1, M1)
+    ν = fill(1/M2, M2)
+
+    Cxy = pairwise(Euclidean(), Y1, Y2)  # M1×M2
+    Cxx = pairwise(Euclidean(), Y1, Y1)  # M1×M1
+    Cyy = pairwise(Euclidean(), Y2, Y2)  # M2×M2
+
+    return sinkhorn_divergence(μ, ν, Cxy, Cxx, Cyy, e; maxiter=maxiter, atol=atol, rtol=rtol)
+end
