@@ -398,3 +398,48 @@ function pca2_wasserstein(Y1::AbstractMatrix, Y2::AbstractMatrix; e=1e-1, maxite
 
     return sinkhorn_divergence(μ, ν, Cxy, Cxx, Cyy, e; maxiter=maxiter, atol=atol, rtol=rtol)
 end
+
+"""
+    dms_single_site(arnet::ArNet, arvar::ArVar, seqid::Int; pc::Float64=0.1)
+    
+Return a `q×L` matrix of containing `-log(P(mut))/log(P(seq))` for all single
+site mutants of the reference sequence `seqid`, and a vector of the indices of
+the residues of the reference sequence that contain gaps (i.e. the 21
+amino-acid) for which the score has no sense and is set by convention to `+Inf`.
+A negative value indicate a beneficial mutation, a value 0 indicate
+the wild-type amino-acid.
+"""
+function dms_single_site(arnet::ArNet, arvar::ArVar, seqid::Int)
+    @extract arnet:H J G
+    @extract arvar:msa L M q d Y
+
+    pca_map = fit(PCA, one_hot(msa), maxoutdim=d)
+
+    1 ≤ seqid ≤ M || error("seqid=$seqid should be in the interval [1,...,$M]")
+
+    Da = fill(Inf64, q, L)
+    xori = msa[:, seqid]
+    yori = Y[:, seqid]
+    xmut = copy(xori)
+    ymut = copy(yori)
+    idxnogap = findall(x -> x != 21, xori)
+    
+    ll0 = -likelihood(arnet, xori, yori)
+
+    @inbounds for i in idxnogap
+        if xori[i] == 21
+            continue
+        end
+        for a in 1:q
+            if a != xori[i]
+                xmut[i] = a
+                ymut = predict(pca_map, one_hot(xmut)')[:]
+                Da[a, i] = -likelihood(arnet, xmut, ymut) - ll0
+            else
+                Da[a, i] = 0.0
+            end
+        end
+        xmut[i] = xori[i] #reset xmut to the original velue 
+    end
+    return Da, sort!(setdiff(1:L, idxnogap))
+end
