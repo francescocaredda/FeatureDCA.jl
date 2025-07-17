@@ -8,7 +8,7 @@ import LoopVectorization: @turbo, @avx
 import DelimitedFiles: readdlm
 import OptimalTransport: sinkhorn_divergence
 import Distances: Euclidean, pairwise, Hamming
-import MultivariateStats: fit, predict
+import MultivariateStats: fit, predict, PCA
 using FastaIO
 using ExtractMacro
 using Statistics, LinearAlgebra, Tullio
