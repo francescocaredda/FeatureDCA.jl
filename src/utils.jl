@@ -254,42 +254,6 @@ Function that returns a tuple with the single and pairwise frequencies of the al
 """
 compute_freq(Z::Matrix) = compute_weighted_frequencies(Matrix{Int8}(Z), fill(1/size(Z,2), size(Z,2)))
 
-# function energy(seq::AbstractVector,y::AbstractVector,arnet::pcaDCA.ArNet)
-#     @extract arnet:H G J
-#     L = length(H)
-#     q = length(H[1])
-#     e = H[1] .+ G[1]*y #q dimensional vector
-#     softmax!(e)
-#     pl = -log(e[seq[1]])
-#     for site in 2:L
-#         Js = J[site-1]
-#         Gs = G[site]
-#         e .= H[site] .+ Gs*y
-#         for j in 1:site-1
-#             for a in 1:q
-#                 e[a] += Js[j,a, seq[j]]
-#             end
-#         end
-#         softmax!(e)
-#         pl -= log(e[seq[site]])
-#     end
-#     return pl
-# end
-
-# function energy(msa::AbstractArray, Y::AbstractMatrix, weigths::AbstractVector, net::pcaDCA.ArNet)
-#     plvec = zeros(size(msa, 2))
-#     @threads for m in axes(msa, 2)
-#         plvec[m] = energy(msa[:, m], Y[:, m], net)
-#     end
-#     return plvec.*weigths
-# end
-
-# energy(msa, Y, net::pcaDCA.ArNet, var::pcaDCA.ArVar) = energy(msa, Y, var.weights, net)
-# energy(msa, Y, net::pcaDCA.ArNet) = energy(msa, Y, fill(1/size(msa, 2), size(msa,2)), net)
-
-# statistical_entropy(msa::AbstractArray, Y, net::pcaDCA.ArNet) = sum(energy(msa, Y, net))/size(msa,1)
-
-
 function encode_amino_acids(seq::Vector{Int})
     # Define mapping from numbers (1-21) to amino acid letters
     num_to_aa = Dict(
@@ -305,9 +269,7 @@ function encode_amino_acids(seq::Vector{Int})
 end
 
 
-hamming(s1,s2) = mean(s1 .!= s2)
-
-function regularization(net::pcaDCA.ArNet, var)
+function regularization(net::FeatureDCA.ArNet, var)
     @extract net: H G J f1
     @extract var: lambdaH lambdaG lambdaJ
     return lambdaH*sum(abs2,vcat(H[2:end]...)) + lambdaG*sum(abs2,vcat(G[:]...)[:]) + lambdaJ*sum(abs2,vcat(J[:]...)[:])
@@ -382,8 +344,6 @@ function read_rmsd_matrix(file_path::String)
     return rmsd_matrix
 end
 
-using Distances
-using OptimalTransport
 function pca2_wasserstein(Y1::AbstractMatrix, Y2::AbstractMatrix; e=1e-1, maxiter=2000, atol=1e-9, rtol=1e-9)
            
     M1 = size(Y1, 2)
@@ -442,4 +402,53 @@ function dms_single_site(arnet::ArNet, arvar::ArVar, seqid::Int)
         xmut[i] = xori[i] #reset xmut to the original velue 
     end
     return Da, sort!(setdiff(1:L, idxnogap))
+end
+
+function pca_dms(Z, wt_idx; pca_components = [1,2])
+    L,_ = size(Z)
+    M = fit(PCA, one_hot(Z), maxoutdim=21*L, pratio=1.0)
+    y_wt = predict(M, one_hot(Z[:, wt_idx:wt_idx]))
+
+
+    wt = Z[:, wt_idx]
+    idxnogap = findall(x -> x != 21, wt)
+
+    DMS = zeros(Int, L, length(idxnogap)*20)
+    DMS[:,1:end] .= wt
+    for i in axes(idxnogap,1)
+        for a in 1:20
+            DMS[idxnogap[i],(i-1)*20 + a] = a
+        end
+    end
+
+    y_dms = predict(M, one_hot(DMS))
+
+    d = pairwise(Euclidean(), y_wt[pca_components,:], y_dms[pca_components,:])[:]
+    
+
+    return d
+end
+
+function pca_dms(Z, M, wt_idx; pca_components = [1,2])
+    L,_ = size(Z)
+    y_wt = predict(M, one_hot(Z[:, wt_idx:wt_idx]))
+
+
+    wt = Z[:, wt_idx]
+    idxnogap = findall(x -> x != 21, wt)
+
+    DMS = zeros(Int, L, length(idxnogap)*20)
+    DMS[:,1:end] .= wt
+    for i in axes(idxnogap,1)
+        for a in 1:20
+            DMS[idxnogap[i],(i-1)*20 + a] = a
+        end
+    end
+
+    y_dms = predict(M, one_hot(DMS))
+
+    d = pairwise(Euclidean(), y_wt[pca_components,:], y_dms[pca_components,:])[:]
+    
+
+    return d
 end

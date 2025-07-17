@@ -3,8 +3,8 @@ import DensityPlot: plot_density
 
 function simple_path_search(net, var; msample::Int = 1000, d::Int= 2, seq_start=rand(axes(var.msa,2)), seq_arrival=rand(axes(var.msa,2)))
 
-    M = fit(PCA, pcaDCA.one_hot(var.msa), maxoutdim=d)
-    ZPC = predict(M, pcaDCA.one_hot(var.msa))
+    M = fit(PCA, FeatureDCA.one_hot(var.msa), maxoutdim=d)
+    ZPC = predict(M, FeatureDCA.one_hot(var.msa))
 
     close("all")
     fig, ax1 = subplots(2, 1, figsize=(6, 8), gridspec_kw=Dict(:height_ratios => [2, 1]))
@@ -31,9 +31,9 @@ function simple_path_search(net, var; msample::Int = 1000, d::Int= 2, seq_start=
         push!(y_steps, y_step)
         Zs_ = sample(net, y_step, msample)
         push!(Zss, Zs_)
-        push!(likelihood_path, pcaDCA.likelihood(net, Zs_, y_step))
-        # push!(likelihood_path, pcaDCA.likelihood_noY(net, Zs_))
-        ZsPC_ = predict(M, pcaDCA.one_hot(Zs_))
+        push!(likelihood_path, FeatureDCA.likelihood(net, Zs_, y_step))
+        # push!(likelihood_path, FeatureDCA.likelihood_noY(net, Zs_))
+        ZsPC_ = predict(M, FeatureDCA.one_hot(Zs_))
         y_i = mean(ZsPC_, dims=2)[:]
         Δ = y_f - y_i
         nΔ = norm(Δ)
@@ -68,8 +68,8 @@ end
 
 function simple_path_search_no_plot(net, var; msample::Int = 1000, d::Int= 2, seq_start=rand(axes(var.msa,2)), seq_arrival=rand(axes(var.msa,2)))
 
-    M = fit(PCA, pcaDCA.one_hot(var.msa), maxoutdim=d)
-    ZPC = predict(M, pcaDCA.one_hot(var.msa))
+    M = fit(PCA, FeatureDCA.one_hot(var.msa), maxoutdim=d)
+    ZPC = predict(M, FeatureDCA.one_hot(var.msa))
 
     Zss = []
     y_steps = []
@@ -91,9 +91,9 @@ function simple_path_search_no_plot(net, var; msample::Int = 1000, d::Int= 2, se
         push!(y_steps, y_step)
         Zs_ = sample(net, y_step, msample)
         push!(Zss, Zs_)
-        push!(likelihood_path, pcaDCA.likelihood(net, Zs_, y_step))
-        # push!(likelihood_path, pcaDCA.likelihood_noY(net, Zs_))
-        ZsPC_ = predict(M, pcaDCA.one_hot(Zs_))
+        push!(likelihood_path, FeatureDCA.likelihood(net, Zs_, y_step))
+        # push!(likelihood_path, FeatureDCA.likelihood_noY(net, Zs_))
+        ZsPC_ = predict(M, FeatureDCA.one_hot(Zs_))
         y_i = mean(ZsPC_, dims=2)[:]
         Δ = y_f - y_i
         nΔ = norm(Δ)
@@ -121,8 +121,8 @@ end
 
 function multiple_path(net, var; iterations = 20, msample::Int = 1000, d::Int= 2, seq_start=rand(axes(var.msa,2)), seq_arrival=rand(axes(var.msa,2)))
 
-    M = fit(PCA, pcaDCA.one_hot(var.msa), maxoutdim=d)
-    ZPC = predict(M, pcaDCA.one_hot(var.msa))
+    M = fit(PCA, FeatureDCA.one_hot(var.msa), maxoutdim=d)
+    ZPC = predict(M, FeatureDCA.one_hot(var.msa))
 
     close("all")
     fig, ax1 = subplots(2, 1, figsize=(6, 8), gridspec_kw=Dict(:height_ratios => [2, 1]))
@@ -150,8 +150,8 @@ function multiple_path(net, var; iterations = 20, msample::Int = 1000, d::Int= 2
             i += 1
             y_step = y_i + η*Δ
             Zs_ = sample(net, y_step, msample)
-            likelihoods[m] += pcaDCA.likelihood(net, Zs_, y_step)
-            ZsPC_ = predict(M, pcaDCA.one_hot(Zs_))
+            likelihoods[m] += FeatureDCA.likelihood(net, Zs_, y_step)
+            ZsPC_ = predict(M, FeatureDCA.one_hot(Zs_))
             y_i = mean(ZsPC_, dims=2)[:]
             Δ = y_f - y_i
             nΔ = norm(Δ)
@@ -186,8 +186,8 @@ end
 #In this version at each step we look for the sequence with the highest likelihood and use that as starting point for the next jump
 function max_likelihood_path_search(net, var; msample::Int = 1000, d::Int= 2, seq_start=rand(axes(var.msa,2)), seq_arrival=rand(axes(var.msa,2)))
 
-    M = fit(PCA, pcaDCA.one_hot(var.msa), maxoutdim=d)
-    ZPC = predict(M, pcaDCA.one_hot(var.msa))
+    M = fit(PCA, FeatureDCA.one_hot(var.msa), maxoutdim=d)
+    ZPC = predict(M, FeatureDCA.one_hot(var.msa))
 
     close("all")
     fig, ax1 = subplots(2, 1, figsize=(6, 8), gridspec_kw=Dict(:height_ratios => [2, 1]))
@@ -213,8 +213,8 @@ function max_likelihood_path_search(net, var; msample::Int = 1000, d::Int= 2, se
         y_step = y_i + η*Δ
         push!(y_steps, y_step)
         Zs_ = sample(net, y_step, msample)
-        ZsPC_ = predict(M, pcaDCA.one_hot(Zs_))
-        l_ = [pcaDCA.likelihood(net, Zs_[:,s], ZsPC_[:,s]) for s in 1:msample]
+        ZsPC_ = predict(M, FeatureDCA.one_hot(Zs_))
+        l_ = [FeatureDCA.likelihood(net, Zs_[:,s], ZsPC_[:,s]) for s in 1:msample]
         idx = argmax(l_)
         y_i = ZsPC_[1:2,idx]
         push!(likelihood_path, l_[idx])
@@ -435,8 +435,8 @@ function index_to_center(i, j, xmin, xmax, ymin, ymax, N)
 end
 
 function find_and_plot_path(Z, net, var, idx_start, idx_goal, grid_likelihood; d = 2)
-    M = fit(PCA, pcaDCA.one_hot(var.msa), maxoutdim=d)
-    ZPC = predict(M, pcaDCA.one_hot(Z))
+    M = fit(PCA, FeatureDCA.one_hot(var.msa), maxoutdim=d)
+    ZPC = predict(M, FeatureDCA.one_hot(Z))
 
     max_x = maximum(ZPC[1,:])
     max_y = maximum(ZPC[2,:])
@@ -448,16 +448,16 @@ function find_and_plot_path(Z, net, var, idx_start, idx_goal, grid_likelihood; d
     m_x = LinRange(min_x, max_x, n+1)
     m_y = LinRange(min_y, max_y, n+1)
 
-    start = pcaDCA.point_to_index(ZPC[1:2,idx_start]..., min_x, max_x, min_y, max_y, n)
-    goal = pcaDCA.point_to_index(ZPC[1:2,idx_goal]..., min_x, max_x, min_y, max_y, n)
+    start = FeatureDCA.point_to_index(ZPC[1:2,idx_start]..., min_x, max_x, min_y, max_y, n)
+    goal = FeatureDCA.point_to_index(ZPC[1:2,idx_goal]..., min_x, max_x, min_y, max_y, n)
     
     # return start, goal
     path, likelihood = shortest_path(-grid_likelihood, start, goal)
 
-    ps = pcaDCA.index_to_point.(path,n)
+    ps = FeatureDCA.index_to_point.(path,n)
     x = map(x->x[1]+1, ps) 
     y = map(x->x[2]+1, ps)
-    paths = pcaDCA.index_to_center(x, y, min_x, max_x, min_y, max_y, n)
+    paths = FeatureDCA.index_to_center(x, y, min_x, max_x, min_y, max_y, n)
    
 
     Zss, y_steps, likelihood_path = simple_path_search_no_plot(net, var, d = d, seq_start=idx_start, seq_arrival=idx_goal)
@@ -466,8 +466,8 @@ function find_and_plot_path(Z, net, var, idx_start, idx_goal, grid_likelihood; d
     y_steps_model = []
     for i in 1:length(paths[1])
         Zs_ = sample(net, [paths[1][i],paths[2][i]], 500)
-        Zs_PC = predict(M, pcaDCA.one_hot(Zs_))
-        likelihood_path_model[i] = pcaDCA.likelihood(net, Zs_, Zs_PC)
+        Zs_PC = predict(M, FeatureDCA.one_hot(Zs_))
+        likelihood_path_model[i] = FeatureDCA.likelihood(net, Zs_, Zs_PC)
         push!(y_steps_model, mean(Zs_PC, dims=2)[1:2])
     end
 
@@ -552,8 +552,8 @@ end
 
 
 function compute_likelihood_grid_ardca(net::ArDCA.ArNet, var::ArDCA.ArVar; n=30)
-    M = fit(PCA, pcaDCA.one_hot(var.Z), maxoutdim=2)
-    ZPC = predict(M, pcaDCA.one_hot(var.Z))
+    M = fit(PCA, FeatureDCA.one_hot(var.Z), maxoutdim=2)
+    ZPC = predict(M, FeatureDCA.one_hot(var.Z))
     max_x = maximum(ZPC[1,:])
     max_y = maximum(ZPC[2,:])
     min_x = minimum(ZPC[1,:])
@@ -592,8 +592,8 @@ end
 #for each tile this computes the likelihood of the sequences that have been generated inside the tile, 
 #regardless of where they actually land in in the grid
 function compute_likelihood_grid(net, var; n=30)
-    M = fit(PCA, pcaDCA.one_hot(var.msa), maxoutdim=var.d)
-    ZPC = predict(M, pcaDCA.one_hot(var.msa))
+    M = fit(PCA, FeatureDCA.one_hot(var.msa), maxoutdim=var.d)
+    ZPC = predict(M, FeatureDCA.one_hot(var.msa))
     max_x = maximum(ZPC[1,:])
     max_y = maximum(ZPC[2,:])
     min_x = minimum(ZPC[1,:])
@@ -610,9 +610,9 @@ function compute_likelihood_grid(net, var; n=30)
         for j in 1:n-1
             Y = [m_x[i],m_y[j]]
             Zs_ = sample(net, Y, 500)
-            Zs_PC = predict(M, pcaDCA.one_hot(Zs_))
-            # grid_likelihood[end-i+1,j] = pcaDCA.likelihood(net, Zs_, Y)
-            grid_likelihood[i,j] = pcaDCA.likelihood(net, Zs_, Zs_PC)
+            Zs_PC = predict(M, FeatureDCA.one_hot(Zs_))
+            # grid_likelihood[end-i+1,j] = FeatureDCA.likelihood(net, Zs_, Y)
+            grid_likelihood[i,j] = FeatureDCA.likelihood(net, Zs_, Zs_PC)
         end
     end
     close("all")
@@ -625,9 +625,9 @@ end
 
 #this function computes the likelihood of each tile in the grid, after having 
 #located each sequence inside the tiles. so the likelihood of each tile depends only on the natural sequences that fall inside of it
-function compute_likelihood_grid_pcadca(net::pcaDCA.ArNet, var::pcaDCA.ArVar; n=30)
-    M = fit(PCA, pcaDCA.one_hot(var.msa), maxoutdim=2)
-    ZPC = predict(M, pcaDCA.one_hot(var.msa))
+function compute_likelihood_grid_FeatureDCA(net::FeatureDCA.ArNet, var::FeatureDCA.ArVar; n=30)
+    M = fit(PCA, FeatureDCA.one_hot(var.msa), maxoutdim=2)
+    ZPC = predict(M, FeatureDCA.one_hot(var.msa))
     max_x = maximum(ZPC[1,:])
     max_y = maximum(ZPC[2,:])
     min_x = minimum(ZPC[1,:])
@@ -669,7 +669,7 @@ end
 
 
 #this one does not work at all
-function compute_likelihood_grid_msa(net::pcaDCA.ArNet, var::pcaDCA.ArVar; n=30)
+function compute_likelihood_grid_msa(net::FeatureDCA.ArNet, var::FeatureDCA.ArVar; n=30)
     ZPC = get_pca_components(var.msa, d=var.d)
     max_x = maximum(ZPC[1,:])
     max_y = maximum(ZPC[2,:])
@@ -701,9 +701,9 @@ end
 #this one generates a set of sequences in each tile of the grid and then 
 #it checks where each sequences has fallen into and for the tiles computes the likelihood
 #given the generated sequences inside the tile
-function compute_likelihood_grid_in_position(net::pcaDCA.ArNet, var::pcaDCA.ArVar; n=30)
-    M = fit(PCA, pcaDCA.one_hot(var.msa), maxoutdim=2)
-    ZPC = predict(M, pcaDCA.one_hot(var.msa))
+function compute_likelihood_grid_in_position(net::FeatureDCA.ArNet, var::FeatureDCA.ArVar; n=30)
+    M = fit(PCA, FeatureDCA.one_hot(var.msa), maxoutdim=2)
+    ZPC = predict(M, FeatureDCA.one_hot(var.msa))
     max_x = maximum(ZPC[1,:])
     max_y = maximum(ZPC[2,:])
     min_x = minimum(ZPC[1,:])
@@ -723,10 +723,10 @@ function compute_likelihood_grid_in_position(net::pcaDCA.ArNet, var::pcaDCA.ArVa
         for j in 1:n-1
             Y = [m_x[i],m_y[j]]
             Zs_ = sample(net, Y, 100)
-            Zs_PC = predict(M, pcaDCA.one_hot(Zs_))
+            Zs_PC = predict(M, FeatureDCA.one_hot(Zs_))
             push!(Zs, Zs_)
             push!(ZsPC, Zs_PC)
-            # grid_likelihood[end-i+1,j] = pcaDCA.likelihood(net, Zs_, Y)
+            # grid_likelihood[end-i+1,j] = FeatureDCA.likelihood(net, Zs_, Y)
         end
     end
 

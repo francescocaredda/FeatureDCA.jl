@@ -1,11 +1,11 @@
-function epistatic_score(net::pcaDCA.ArNet, var::pcaDCA.ArVar, idx::Int)
-    arvar = ArDCA.ArVar(var.L, var.M, var.q, var.lambdaJ, var.lambdaH, var.msa, var.weights, 1.0, :NATURAL)
-    H = net.H[2:end]
-    J = net.J
-    J_ = [permutedims(J[i], (2, 3, 1)) for i in 1:length(net.J)]
-    arnet = ArDCA.ArNet([1:var.L;], net.f1, J_, H)
-    return ArDCA.epistatic_score(arnet, arvar, idx)
-end
+# function epistatic_score(net::pcaDCA.ArNet, var::pcaDCA.ArVar, idx::Int)
+#     arvar = ArDCA.ArVar(var.L, var.M, var.q, var.lambdaJ, var.lambdaH, var.msa, var.weights, 1.0, :NATURAL)
+#     H = net.H[2:end]
+#     J = net.J
+#     J_ = [permutedims(J[i], (2, 3, 1)) for i in 1:length(net.J)]
+#     arnet = ArDCA.ArNet([1:var.L;], net.f1, J_, H)
+#     return ArDCA.epistatic_score(arnet, arvar, idx)
+# end
 
 function compute_PPV(score::Vector{Tuple{Int,Int,Float64}}, filestruct::String; min_separation::Int = 6)
     dist = compute_residue_pair_dist(filestruct)

@@ -22,6 +22,30 @@ function likelihood(net, seq::Vector, y::Vector)
     return sum(pl)
 end
 
+function likelihood_vec(net, seq::Vector, y::Vector)
+    @extract net:H G J
+    L = length(H)
+    q = length(H[1])
+    pl = zeros(L)
+    e = H[1] .+ G[1]*y #q dimensional vector
+    softmax!(e)
+    pl[1] = log(e[seq[1]])
+    @threads for site in 2:L
+        e_ = zeros(q)
+        Js = J[site-1]
+        Gs = G[site]
+        e_ .= H[site] .+ Gs*y
+        for j in 1:site-1
+            for a in 1:q
+                e_[a] += Js[j,a, seq[j]]
+            end
+        end
+        softmax!(e_)
+        pl[site] = log(e_[seq[site]])
+    end
+    return pl
+end
+
 function likelihood(net, msa::Matrix, Y::Matrix)
     @extract net:H G J
     L, M = size(msa)
