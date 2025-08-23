@@ -125,80 +125,6 @@ function pl_and_grad!(grad,x,arvar)
     return pl
 end
 
-# function pl_and_grad_faster!(grad,x,arvar) #actually slower and more allocations
-#     T = eltype(x)
-#     @extract arvar: q L M d msa weights Y lambdaH lambdaJ lambdaG
-#     N = length(x)
-#     it_h = 1:q
-#     it_G = q+1:d*q+q
-#     it_J = d*q+q+1:N
-#     s = Int.((N - d*q - q)/q^2)
-    
-#     h = x[it_h]
-#     G = reshape(x[it_G],q,d)
-#     J = reshape(x[it_J],s,q,q)
-    
-#     pl = zero(T)
-
-#     pl += lambdaH*(sum(abs2, h))
-#     pl += lambdaJ*(sum(abs2, J))
-#     pl += lambdaG*(sum(abs2, G))
-
-#     grad .= zero(T)
-
-#     for i in it_h
-#         grad[i] += 2*lambdaH*x[i]
-#     end
-#     for i in it_G
-#         grad[i] += 2*lambdaG*x[i]
-#     end
-#     for i in it_J
-#         grad[i] += 2*lambdaJ*x[i]
-#     end
-
-#     vecene = zeros(Float64, q)
-#     Ym = zeros(Float64, d)
-#     partial_delta = zeros(Float64, q)
-
-#     @inbounds for m in 1:M
-#         Zm = view(msa, :, m)
-#         δ_ = view(arvar.δ, m, 1:s, :)
-#         Ym = Y[:,m]
-
-#         fillvecene!(vecene, h, G, J, Ym, Zm)
-
-#         Z = sumexp(vecene)
-#         pl -= weights[m]*(vecene[Zm[s+1]] - log(Z))
-
-#         softmax!(vecene)
-
-#         for a in 1:q
-#             partial_delta[a] = weights[m]*((Zm[s+1] == a) - vecene[a])
-#             grad[a] -= partial_delta[a]
-#         end
-
-#         @inbounds @views begin
-#             for k in 1:d
-#                 for a in 1:q
-#                     grad[q + a + (k - 1) * q] -= partial_delta[a] * Ym[k]
-#                 end
-#             end
-#         end
-#         @inbounds @views begin
-#             for b in 1:q   # Iterate over b
-#                 for a in 1:q   # Iterate over a
-#                     for k in 1:s  # Iterate over k
-#                         index = q + d*q + k + (a - 1) * s + (b - 1) * s * q 
-#                         grad[index] -= δ_[k, b] * partial_delta[a]
-#                     end
-#                 end
-#             end
-#         end
-#     end
-
-#     return pl
-# end
-
 function fillvecene!(vecene, h, G, J, Ym, msa)
     vecene .= h + G*Ym 
     for a in axes(J,2)
@@ -286,8 +212,6 @@ function trainer(fasta::String;
     else
         error("Wrong value for Y, it can be either :PCA or :ZERO")
     end
-
-    # ArVar(Z,W,lambdaH,lambdaJ,lambdaG)
 
     arnet,vecps = minimize_arnet(alg, arvar)
     
