@@ -1,6 +1,6 @@
-# AttentionDCA
+# FeatureDCA
 
-Package used for the analysis of the factored self-attention mechanism through a simple one-layer DCA model at:
+Package used for the analysis of the feature-conditioned autoregressive Direct Coupling Analysis method at:
 
 1. Caredda F., Gennai L., De Los Rios P., Pagnani A., Controllable protein design via autoregressive direct coupling analysis conditioned on principal components, [Plos Computational Biology](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1013996)
 
@@ -18,7 +18,7 @@ The functions for the training and sampling are
 ```
 trainer, sample
 ```
-These take as as inputs either tuples with integer-encoded MSA, weight vector, and feature matrix $(Z,W,Y)$ or a path to the fasta file containing the sequences of the protein family under study along with the feature vector Y. To get more details on the use of e$
+These take as as inputs either tuples with integer-encoded MSA, weight vector, and feature matrix $(Z,W,Y)$ or a path to the fasta file containing the sequences of the protein family under study along with the feature vector Y. To get more details on the use of each single function use the help function in the Julia repl, e.g.
 ```
 ?trainer
 ```
